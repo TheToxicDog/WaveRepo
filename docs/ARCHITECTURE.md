@@ -85,9 +85,14 @@ The scan only produces a plan, which is shown for review. Apply performs it and 
 
 Video downloads go to `<download dir>/Music Videos/`, which the music scanner skips. The **Music videos** page (`/api/videos`) lists video files in every `Music Videos` folder under the music folders. Each video's id is a hash of its path, so the stream and thumbnail endpoints only serve files that listing found. Thumbnails are a single FFmpeg frame, cached in the data folder. YouTube video downloads are H.264 MP4s, which play in Edge WebView2 (the Windows window) and Chrome.
 
-## Albums vs. loose songs
+## Albums, EPs, singles and loose songs
 
-An "album" with one song isn't shown as an album (Albums grid, Home, search, artist pages). Those songs appear under **Songs** and on the artist page under **Singles & loose songs**.
+Each local release gets a `kind` (album / ep / single) in `rebuild_aggregates`, decided in this order:
+1. a release-type tag in the files (`TXXX:MusicBrainz Album Type`, MP4 freeform, Vorbis `RELEASETYPE`). WaveGrab writes this tag on every download, using the catalog's `record_type`.
+2. the online catalog's record type, looked up once per untagged album after each scan (`catalog.learn_release_types`) and cached in `kv` as `release:<album_id>` = `type|total_tracks`. The total also tells the UI how many songs a partial album is missing.
+3. Spotify's rule: 1–3 songs under 30 min is a single, 4–6 songs under 30 min is an EP, anything else is an album.
+
+The Albums page shows only `kind='album'`; EPs and singles are on **Singles & EPs**. A release with just one song is never shown as an album or EP: it appears under **Songs** and on the artist page under **Singles & loose songs**.
 
 ## Playback
 

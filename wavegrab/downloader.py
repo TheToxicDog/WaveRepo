@@ -98,12 +98,14 @@ def enqueue(items: list[dict], group_title="") -> list[int]:
             cur = c.execute(
                 """INSERT INTO downloads(position, status, kind, title, artist, album, album_artist, track_no,
                    disc_no, year, genre, duration, cover_url, catalog_id, source_url, group_id, group_title,
-                   created_at, multi_disc) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   created_at, multi_disc, release_type)
+                   VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (pos, it.get("kind", "track"), it.get("title") or it.get("source_url") or "Unknown",
                  it.get("artist", ""), it.get("album", ""), it.get("album_artist") or it.get("artist", ""),
                  it.get("track_no"), it.get("disc_no"), _int(it.get("year")), it.get("genre", ""),
                  it.get("duration"), it.get("cover_url", ""), str(it.get("catalog_id") or ""),
-                 it.get("source_url", ""), gid, group_title, _now(), 1 if it.get("multi_disc") else 0))
+                 it.get("source_url", ""), gid, group_title, _now(), 1 if it.get("multi_disc") else 0,
+                 scanner.normalize_release_type(it.get("release_type"))))
             ids.append(cur.lastrowid)
             pos += 1
     _wake.set()
@@ -132,7 +134,8 @@ def enqueue_album(album_id: str, only_missing=True):
             continue
         items.append(dict(title=t["title"], artist=t["artist"], album=a["title"], album_artist=a["artist"],
                           track_no=t["track_no"], disc_no=t["disc_no"], year=a["year"], genre=a.get("genre", ""),
-                          duration=t["duration"], cover_url=a["cover"], catalog_id=t["id"], multi_disc=multi))
+                          duration=t["duration"], cover_url=a["cover"], catalog_id=t["id"], multi_disc=multi,
+                          release_type=a.get("type")))
     return enqueue(items, group_title=f"{a['artist']} — {a['title']}")
 
 
@@ -148,7 +151,7 @@ def enqueue_track(track_id: str):
                          track_no=t.get("track_position"), disc_no=t.get("disk_number"),
                          year=(t.get("release_date") or "")[:4], genre=full.get("genre", ""),
                          duration=t.get("duration"), cover_url=alb.get("cover_xl") or alb.get("cover_big", ""),
-                         catalog_id=str(t["id"]))])
+                         catalog_id=str(t["id"]), release_type=full.get("type") or alb.get("record_type"))])
 
 
 def enqueue_url(url: str, mode="audio"):
@@ -207,7 +210,7 @@ def enqueue_spotify(url: str):
                           genre=(sg.get("genres") or [""])[0].title() if sg.get("genres") else "",
                           duration=sg.get("duration"), cover_url=sg.get("cover_url", ""),
                           catalog_id="spotify:" + str(sg.get("song_id", "")), source_url=sg.get("url", ""),
-                          multi_disc=multi))
+                          multi_disc=multi, release_type=sg.get("album_type")))
     # songs that are already in the library aren't queued at all
     items = [it for it in items if not existing_copy(_align_with_library(dict(it)))]
     title = songs[0].get("list_name") if songs and songs[0].get("list_name") else (
@@ -418,12 +421,13 @@ def tag_file(path: Path, meta: dict, cover: bytes | None):
     """Write tags + cover with mutagen for mp3 / m4a / flac / opus / ogg."""
     import mutagen
     from mutagen.flac import FLAC, Picture
-    from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK, ID3NoHeaderError
-    from mutagen.mp4 import MP4, MP4Cover
+    from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK, TXXX, ID3NoHeaderError
+    from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
 
     ext = path.suffix.lower()
     tn, dn = meta.get("track_no"), meta.get("disc_no")
     year = str(meta.get("year") or "")
+    rtype = scanner.normalize_release_type(meta.get("release_type"))  # album / ep / single
     if ext == ".mp3":
         try:
             tags = ID3(path)
@@ -442,6 +446,8 @@ def tag_file(path: Path, meta: dict, cover: bytes | None):
             tags.add(TRCK(encoding=3, text=str(tn)))
         if dn:
             tags.add(TPOS(encoding=3, text=str(dn)))
+        if rtype:
+            tags.add(TXXX(encoding=3, desc="MusicBrainz Album Type", text=rtype))
         if cover:
             tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover))
         tags.save(path)
@@ -459,6 +465,8 @@ def tag_file(path: Path, meta: dict, cover: bytes | None):
             f["trkn"] = [(int(tn), 0)]
         if dn:
             f["disk"] = [(int(dn), 0)]
+        if rtype:
+            f["----:com.apple.iTunes:MusicBrainz Album Type"] = [MP4FreeForm(rtype.encode())]
         if cover:
             fmt = MP4Cover.FORMAT_PNG if cover[:4] == b"\x89PNG" else MP4Cover.FORMAT_JPEG
             f["covr"] = [MP4Cover(cover, imageformat=fmt)]
@@ -481,6 +489,8 @@ def tag_file(path: Path, meta: dict, cover: bytes | None):
             f["tracknumber"] = str(tn)
         if dn:
             f["discnumber"] = str(dn)
+        if rtype:
+            f["releasetype"] = rtype
         if cover:
             pic = Picture()
             pic.type, pic.mime, pic.data = 3, "image/jpeg", cover

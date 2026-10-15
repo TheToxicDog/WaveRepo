@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS tracks (
     added_at INTEGER,
     play_count INTEGER DEFAULT 0,
     last_played INTEGER DEFAULT 0,
-    liked_at INTEGER DEFAULT 0
+    liked_at INTEGER DEFAULT 0,
+    release_type TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album_id, disc_no, track_no);
 CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist_id);
@@ -58,7 +59,9 @@ CREATE TABLE IF NOT EXISTS albums (
     duration REAL,
     cover TEXT,
     added_at INTEGER,
-    norm TEXT
+    norm TEXT,
+    kind TEXT DEFAULT 'album',
+    online_total INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS artists (
@@ -164,7 +167,8 @@ CREATE TABLE IF NOT EXISTS downloads (
     matched_url TEXT DEFAULT '',
     created_at INTEGER,
     finished_at INTEGER,
-    multi_disc INTEGER DEFAULT 0
+    multi_disc INTEGER DEFAULT 0,
+    release_type TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status, position);
 
@@ -191,9 +195,13 @@ def init():
     with _write_lock:
         conn.executescript(SCHEMA)
         # lightweight migrations for databases made by older versions
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(downloads)")}
-        if "multi_disc" not in cols:
-            conn.execute("ALTER TABLE downloads ADD COLUMN multi_disc INTEGER DEFAULT 0")
+        for table, col, decl in (("downloads", "multi_disc", "INTEGER DEFAULT 0"),
+                                 ("downloads", "release_type", "TEXT DEFAULT ''"),
+                                 ("tracks", "release_type", "TEXT DEFAULT ''"),
+                                 ("albums", "kind", "TEXT DEFAULT 'album'"),
+                                 ("albums", "online_total", "INTEGER")):
+            if col not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
         conn.commit()
 
 

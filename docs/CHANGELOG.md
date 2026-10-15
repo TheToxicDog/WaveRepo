@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — albums only, download the rest (2026-10-15)
+- **The Albums page shows only full albums.** Singles and EPs have their own **Singles & EPs** page (sidebar and library tabs) and their own section on artist pages.
+- How a release is classified: the file's release-type tag (`MusicBrainz Album Type` / `RELEASETYPE`) when present. Otherwise the online catalog is checked once per album and cached. Otherwise Spotify's rule: 1–3 songs under 30 min is a single, 4–6 songs under 30 min is an EP.
+- That online check means a partly downloaded album (for example 3 of 12 songs) still counts as an album instead of looking like a single.
+- Downloads now write the release type into the file's tags, so new music is classified exactly.
+- **Download the rest:** albums you only have part of show a "3 of 12" badge, and the album page has a **Download the rest (N songs)** button. It turns into "In your download queue" once queued. The full list of missing songs is still shown below.
+
 ## 0.3.0 — music videos page (2026-10-15)
 - New **Music videos** page in the sidebar. It lists everything in the `Music Videos` folder of your music drive and download folder (where Downloads → "Music video" saves), with thumbnails (FFmpeg grabs a frame about 20 s in, cached) and the artist and title taken from the `Artist - Title` filename.
 - Clicking a video opens a full-window player with Previous/Next. It plays the next video automatically, and Esc closes it. Music that was playing pauses while the video plays and resumes afterwards.

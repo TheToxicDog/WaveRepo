@@ -29,7 +29,7 @@ function renderNav() {
     `<a href="#/${route}" class="${r === route || (route && r.startsWith(route + '/')) ? 'active' : ''}">${icon(ic, 22)}<span>${label}</span>${extra}</a>`;
   $('#nav-main').innerHTML = link('', 'home', 'Home') + link('search', 'search', 'Search') + link('discover', 'compass', 'Discover')
     + link('downloads', 'download', 'Downloads', dl ? `<span class="badge">${dl}</span>` : '');
-  $('#nav-lib').innerHTML = link('library/albums', 'disc', 'Albums') + link('library/artists', 'mic', 'Artists') + link('library/songs', 'music', 'Songs')
+  $('#nav-lib').innerHTML = link('library/albums', 'disc', 'Albums') + link('library/singles', 'disc', 'Singles & EPs') + link('library/artists', 'mic', 'Artists') + link('library/songs', 'music', 'Songs')
     + link('videos', 'playCircle', 'Music videos');
   $('#nav-settings').innerHTML = `${icon('settings', 22)}<span>Settings</span>`;
   $('#nav-settings').classList.toggle('active', r === 'settings');
@@ -86,6 +86,7 @@ async function route() {
       case 'downloads': await downloads(view); break;
       case 'library':
         if (parts[1] === 'artists') await artists(view);
+        else if (parts[1] === 'singles') await albums(view, 'singles');
         else if (parts[1] === 'songs') await songs(view);
         else await albums(view);
         break;

@@ -59,7 +59,7 @@ def with_cover(items, key="album_id"):
 def stats():
     return {
         "tracks": db.scalar("SELECT COUNT(*) FROM tracks"),
-        "albums": db.scalar("SELECT COUNT(*) FROM albums WHERE track_count > 1"),
+        "albums": db.scalar("SELECT COUNT(*) FROM albums WHERE track_count > 1 AND kind='album'"),
         "artists": db.scalar("SELECT COUNT(*) FROM artists"),
         "duration": db.scalar("SELECT COALESCE(SUM(duration),0) FROM tracks"),
         "liked": db.scalar("SELECT COUNT(*) FROM tracks WHERE liked_at>0"),
@@ -70,13 +70,15 @@ def stats():
 
 
 @app.get("/api/albums")
-def albums(sort: str = "added", q: str = ""):
+def albums(sort: str = "added", q: str = "", kind: str = "album"):
     order = {"added": "added_at DESC", "title": "title COLLATE NOCASE", "artist": "artist COLLATE NOCASE, year",
              "year": "year DESC"}.get(sort, "added_at DESC")
-    # a "album" with a single song is a loose track, not an album: it lives in Songs
-    where, params = "WHERE track_count > 1", ()
+    # a release with a single song is a loose track: it lives in Songs.
+    # kind=album -> full albums only; kind=singles -> EPs and singles; kind=all -> both
+    kinds = {"album": "AND kind='album'", "singles": "AND kind IN ('ep','single')"}.get(kind, "")
+    where, params = f"WHERE track_count > 1 {kinds}", ()
     if q:
-        where, params = "WHERE track_count > 1 AND (title LIKE ? OR artist LIKE ?)", (f"%{q}%", f"%{q}%")
+        where, params = f"WHERE track_count > 1 {kinds} AND (title LIKE ? OR artist LIKE ?)", (f"%{q}%", f"%{q}%")
     items = db.rows(f"SELECT * FROM albums {where} ORDER BY {order}", params)
     for a in items:
         a["cover"] = cover_url(a["id"])
@@ -103,7 +105,9 @@ def album_online(album_id: str):
     found = catalog.find_album(a["artist"], a["title"])
     if not found:
         return {"match": None}
-    return {"match": catalog.album(found["id"])}
+    match = catalog.album(found["id"])
+    catalog.remember_release(album_id, match)
+    return {"match": match}
 
 
 @app.get("/api/artists")
@@ -124,7 +128,11 @@ def artist(artist_id: str):
         raise HTTPException(404, "Artist not found")
     a["cover"] = a["image_url"] or (cover_url(a["cover_album"]) if a["cover_album"] else "")
     a["albums"] = [dict(x, cover=cover_url(x["id"])) for x in
-                   db.rows("SELECT * FROM albums WHERE artist_id=? AND track_count > 1 ORDER BY year DESC", (artist_id,))]
+                   db.rows("SELECT * FROM albums WHERE artist_id=? AND track_count > 1 AND kind='album' "
+                           "ORDER BY year DESC", (artist_id,))]
+    a["eps"] = [dict(x, cover=cover_url(x["id"])) for x in
+                db.rows("SELECT * FROM albums WHERE artist_id=? AND track_count > 1 AND kind IN ('ep','single') "
+                        "ORDER BY year DESC", (artist_id,))]
     a["singles"] = with_cover(db.rows(
         f"SELECT {TRACK_COLS} FROM tracks t JOIN albums al ON al.id=t.album_id "
         "WHERE t.artist_id=? AND al.track_count = 1 ORDER BY t.year DESC, t.title", (artist_id,)))

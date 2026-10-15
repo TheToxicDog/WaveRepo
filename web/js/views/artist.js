@@ -20,6 +20,7 @@ export async function localArtist(view, id) {
     <div id="top"></div>
     <div style="padding:0 24px">
       ${a.albums.length ? `<div class="section"><div class="section-head"><h2>Your albums</h2></div>${grid(a.albums, albumCard)}</div>` : ''}
+      ${a.eps.length ? `<div class="section"><div class="section-head"><h2>Your singles & EPs</h2></div>${grid(a.eps, albumCard)}</div>` : ''}
       ${a.singles.length ? `<div class="section"><div class="section-head"><h2>Singles & loose songs</h2></div><div id="singles"></div></div>` : ''}
       ${a.appears_on.length ? `<div class="section"><div class="section-head"><h2>Appears on</h2></div><div id="appears"></div></div>` : ''}
       <div id="disco"></div><div id="related"></div></div>`;
@@ -29,7 +30,7 @@ export async function localArtist(view, id) {
   trackTable(view.querySelector('#top'), a.top_tracks.slice(0, 5), { col4: 'plays', context: ctx });
   if (a.singles.length) trackTable(view.querySelector('#singles'), a.singles, { col4: 'year', context: ctx });
   if (a.appears_on.length) trackTable(view.querySelector('#appears'), a.appears_on, { col4: 'none' });
-  const allTracks = async () => (await Promise.all(a.albums.map((al) => api.get(`/api/albums/${al.id}`)))).flatMap((x) => x.tracks).concat(a.singles);
+  const allTracks = async () => (await Promise.all(a.albums.concat(a.eps).map((al) => api.get(`/api/albums/${al.id}`)))).flatMap((x) => x.tracks).concat(a.singles);
   view.querySelector('#play').onclick = async () => player.playList(await allTracks(), 0, { context: ctx, shuffle: false });
   view.querySelector('#shuf').onclick = async () => player.playList(await allTracks(), 0, { context: ctx, shuffle: true });
   if (!store.settings.online) return;

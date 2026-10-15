@@ -14,7 +14,7 @@ export async function home(view) {
   const page = view.firstElementChild;
 
   const [recent, albums, history] = await Promise.all([
-    api.get('/api/recent-albums?limit=12'), api.get('/api/albums?sort=added'), api.get('/api/history?limit=30')]);
+    api.get('/api/recent-albums?limit=12'), api.get('/api/albums?sort=added&kind=all'), api.get('/api/history?limit=30')]);
 
   if (!albums.length) {
     page.querySelector('#quick').innerHTML = `<div class="empty">${icon('folder', 48)}<h3>Your library is empty</h3>

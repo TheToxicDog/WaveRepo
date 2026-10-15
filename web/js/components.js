@@ -11,8 +11,10 @@ export function albumCard(a) {
   const remote = a.source === 'deezer';
   const href = remote ? (a.saved && a.local_id ? `#/album/${a.local_id}` : `#/online/album/${a.id}`) : `#/album/${a.id}`;
   const cover = remote ? img(a.cover_small || a.cover) : a.cover;
+  const partial = !remote && a.online_total > a.track_count;
   const tag = remote ? (a.saved ? `<span class="tag-saved">${icon('check', 12)}Saved</span>`
-    : `<span class="tag-cloud">${icon('cloud', 13)}Not saved</span>`) : '';
+    : `<span class="tag-cloud">${icon('cloud', 13)}Not saved</span>`)
+    : partial ? `<span class="tag-saved tag-partial" title="You have ${a.track_count} of ${a.online_total} songs">${a.track_count} of ${a.online_total}</span>` : '';
   const sub = remote ? `${a.year ? esc(a.year) + ' • ' : ''}${esc(a.artist)}` : `${a.year ? esc(a.year) + ' • ' : ''}${esc(a.artist)}`;
   const fab = remote && !a.saved
     ? `<button class="play-fab" data-dl-album="${esc(a.id)}" title="Download album">${icon('download', 22)}</button>`

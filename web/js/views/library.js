@@ -5,6 +5,7 @@ import { debounce, fmtLong, icon } from '../ui.js';
 
 const tabs = (active) => `<div class="chips">
   <a class="chip ${active === 'albums' ? 'active' : ''}" href="#/library/albums" style="display:inline-flex;align-items:center">Albums</a>
+  <a class="chip ${active === 'singles' ? 'active' : ''}" href="#/library/singles" style="display:inline-flex;align-items:center">Singles & EPs</a>
   <a class="chip ${active === 'artists' ? 'active' : ''}" href="#/library/artists" style="display:inline-flex;align-items:center">Artists</a>
   <a class="chip ${active === 'songs' ? 'active' : ''}" href="#/library/songs" style="display:inline-flex;align-items:center">Songs</a>
   <a class="chip ${active === 'liked' ? 'active' : ''}" href="#/liked" style="display:inline-flex;align-items:center">Liked Songs</a></div>`;
@@ -12,10 +13,12 @@ const tabs = (active) => `<div class="chips">
 function pref(key, def) { try { return localStorage.getItem(key) || def; } catch { return def; } }
 function setPref(key, v) { try { localStorage.setItem(key, v); } catch { /* ignore */ } }
 
-export async function albums(view) {
+// kind: 'album' (full albums only) or 'singles' (EPs and singles)
+export async function albums(view, kind = 'album') {
   let sort = pref('wg.albumSort', 'added');
-  view.innerHTML = `<div class="page"><h1>Albums</h1>${tabs('albums')}
-    <div class="row" style="margin-bottom:18px"><input class="input" id="flt" placeholder="Filter albums" style="max-width:280px">
+  const label = kind === 'singles' ? 'Singles & EPs' : 'Albums';
+  view.innerHTML = `<div class="page"><h1>${label}</h1>${tabs(kind === 'singles' ? 'singles' : 'albums')}
+    <div class="row" style="margin-bottom:18px"><input class="input" id="flt" placeholder="Filter ${label.toLowerCase()}" style="max-width:280px">
     <span class="spacer"></span><span class="muted">Sort</span>
     <select class="input" id="sort" style="width:170px">
       <option value="added">Recently added</option><option value="title">Title</option><option value="artist">Artist</option><option value="year">Release year</option>
@@ -25,9 +28,9 @@ export async function albums(view) {
   sel.value = sort;
   const load = async () => {
     const q = view.querySelector('#flt').value.trim();
-    const items = await api.get(`/api/albums?sort=${sort}&q=${encodeURIComponent(q)}`);
+    const items = await api.get(`/api/albums?sort=${sort}&kind=${kind}&q=${encodeURIComponent(q)}`);
     view.querySelector('#list').innerHTML = items.length ? grid(items, albumCard)
-      : `<div class="empty">${icon('disc', 48)}<h3>No albums</h3><p>Add a music folder in Settings or download some from Discover.</p></div>`;
+      : `<div class="empty">${icon('disc', 48)}<h3>No ${label.toLowerCase()}</h3><p>${kind === 'singles' ? 'Singles and EPs you save will show up here.' : 'Add a music folder in Settings or download some from Discover.'}</p></div>`;
   };
   sel.onchange = () => { sort = sel.value; setPref('wg.albumSort', sort); load(); };
   view.querySelector('#flt').oninput = debounce(load, 200);

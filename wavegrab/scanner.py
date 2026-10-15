@@ -69,7 +69,7 @@ def _num(v):
 def read_tags(path: Path) -> dict:
     info = {"title": "", "artist": "", "album": "", "album_artist": "", "genre": "",
             "year": None, "track_no": None, "disc_no": None, "duration": 0.0,
-            "bitrate": None, "sample_rate": None, "lyrics": ""}
+            "bitrate": None, "sample_rate": None, "lyrics": "", "release_type": ""}
     try:
         easy = mutagen.File(path, easy=True)
     except Exception:
@@ -97,8 +97,16 @@ def read_tags(path: Path) -> dict:
                 for fr in tags.getall("USLT"):
                     info["lyrics"] = str(fr.text)
                     break
+                info["release_type"] = _first(tags, "TXXX:MusicBrainz Album Type", "TXXX:RELEASETYPE",
+                                              "TXXX:RELEASE TYPE")
             else:
                 info["lyrics"] = _first(tags, "\xa9lyr", "lyrics", "LYRICS", "unsyncedlyrics", "UNSYNCEDLYRICS")
+                info["release_type"] = _first(tags, "----:com.apple.iTunes:MusicBrainz Album Type",
+                                              "----:com.apple.iTunes:RELEASETYPE", "releasetype", "RELEASETYPE",
+                                              "musicbrainz_albumtype", "MUSICBRAINZ_ALBUMTYPE")
+            if isinstance(info["release_type"], bytes):
+                info["release_type"] = info["release_type"].decode("utf-8", "ignore")
+            info["release_type"] = normalize_release_type(info["release_type"])
     except Exception:
         pass
     # filename / folder fallbacks
@@ -119,6 +127,28 @@ def read_tags(path: Path) -> dict:
     if not info["album_artist"]:
         info["album_artist"] = primary_artist(info["artist"])
     return info
+
+
+def normalize_release_type(v) -> str:
+    v = str(v or "").strip().lower()
+    if v.startswith("b'"):  # MP4 freeform values can arrive as a bytes repr
+        v = v[2:-1]
+    if v.startswith("compil"):  # compilations are albums
+        return "album"
+    for kind in ("album", "ep", "single"):
+        if v.startswith(kind):
+            return kind
+    return ""
+
+
+def album_kind(tagged: str, track_count: int, duration: float) -> str:
+    """Album, EP or single. A release-type tag wins; otherwise Spotify's rule:
+    1-3 songs under 30 min = single, 4-6 songs under 30 min = EP."""
+    if tagged in ("album", "ep", "single"):
+        return tagged
+    if (duration or 0) >= 30 * 60 or track_count >= 7:
+        return "album"
+    return "single" if track_count <= 3 else "ep"
 
 
 def extract_cover(path: Path):
@@ -203,7 +233,8 @@ def index_file(conn, path: Path, root: str, st=None):
                 genre=tags["genre"], year=tags["year"], track_no=tags["track_no"], disc_no=tags["disc_no"],
                 duration=tags["duration"], bitrate=tags["bitrate"], sample_rate=tags["sample_rate"],
                 format=path.suffix.lower().lstrip("."), size=st.st_size, mtime=st.st_mtime, has_cover=has_cover,
-                lyrics_plain=parsed["plain"], lyrics_synced=1 if parsed["synced"] else 0)
+                lyrics_plain=parsed["plain"], lyrics_synced=1 if parsed["synced"] else 0,
+                release_type=tags["release_type"])
     if existing:
         tid = existing["id"]
         sets = ", ".join(f"{k}=:{k}" for k in vals)
@@ -230,8 +261,16 @@ def rebuild_aggregates(conn):
         SELECT album_id, MAX(album), MAX(album_artist), MAX(artist_id), MAX(year), MAX(genre),
                COUNT(*), SUM(duration), MAX(added_at), ''
         FROM tracks GROUP BY album_id""")
-    for a in conn.execute("SELECT id, title, artist FROM albums").fetchall():
-        conn.execute("UPDATE albums SET norm=? WHERE id=?", (norm(a["artist"]) + "|" + norm(a["title"]), a["id"]))
+    tagged = {r["album_id"]: r["rt"] for r in conn.execute(
+        "SELECT album_id, MAX(release_type) rt FROM tracks WHERE release_type != '' GROUP BY album_id")}
+    # release type + full track count learned from the online catalog ("album|12")
+    online = {k.split(":", 1)[1]: v for k, v in conn.execute("SELECT k, v FROM kv WHERE k LIKE 'release:%'")}
+    for a in conn.execute("SELECT id, title, artist, track_count, duration FROM albums").fetchall():
+        o_type, _, o_total = online.get(a["id"], "").partition("|")
+        kind = album_kind(tagged.get(a["id"]) or normalize_release_type(o_type), a["track_count"], a["duration"])
+        conn.execute("UPDATE albums SET norm=?, kind=?, online_total=? WHERE id=?",
+                     (norm(a["artist"]) + "|" + norm(a["title"]), kind, int(o_total) if o_total.isdigit() else None,
+                      a["id"]))
     conn.execute("DELETE FROM artists")
     conn.execute("""
         INSERT INTO artists(id, name, album_count, track_count, norm)
@@ -241,7 +280,7 @@ def rebuild_aggregates(conn):
         conn.execute("UPDATE artists SET norm=?, cover_album=(SELECT id FROM albums WHERE artist_id=? "
                      "ORDER BY track_count > 1 DESC, year DESC LIMIT 1) WHERE id=?", (norm(a["name"]), a["id"], a["id"]))
     conn.execute("UPDATE artists SET album_count=(SELECT COUNT(*) FROM albums WHERE albums.artist_id=artists.id "
-                 "AND track_count > 1)")
+                 "AND kind='album' AND track_count > 1)")
     # restore artist images fetched from the catalog earlier
     for k, v in conn.execute("SELECT k, v FROM kv WHERE k LIKE 'artist_img:%'").fetchall():
         conn.execute("UPDATE artists SET image_url=? WHERE id=?", (v, k.split(":", 1)[1]))
@@ -328,6 +367,8 @@ def scan(full: bool = False):
         scan_state.update(running=False, last_scan=int(time.time()), current="")
         events.publish("scan", scan_state)
         events.publish("library", {"reason": "scan"})
+        from . import catalog  # late import: catalog imports this module
+        threading.Thread(target=catalog.learn_release_types, daemon=True).start()
         return True
     finally:
         scan_state["running"] = False

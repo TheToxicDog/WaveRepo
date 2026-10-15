@@ -10,13 +10,14 @@ export async function localAlbum(view, id) {
   const ctx = { type: 'album', id, name: a.title };
   view.innerHTML = `<div class="hero" id="hero">
       <img class="hero-art" src="${esc(a.cover)}" alt="" onerror="this.style.opacity=0">
-      <div class="hero-info"><div class="hero-kind">${a.track_count > 3 ? 'Album' : 'Single / EP'} <span class="badge-sm saved">${icon('check', 10)} On this device</span></div>
+      <div class="hero-info"><div class="hero-kind">${{ album: 'Album', ep: 'EP', single: 'Single' }[a.kind] || 'Album'} <span class="badge-sm saved">${icon('check', 10)} On this device</span></div>
         <h1>${esc(a.title)}</h1>
         <div class="hero-meta"><a href="#/artist/${esc(a.artist_id)}"><b>${esc(a.artist)}</b></a>${a.year ? `<span class="sep"></span><span>${a.year}</span>` : ''}
-        <span class="sep"></span><span>${a.track_count} songs, ${fmtLong(a.duration || 0)}</span>${a.genre ? `<span class="sep"></span><span>${esc(a.genre)}</span>` : ''}</div></div></div>
+        <span class="sep"></span><span>${a.online_total > a.track_count ? `${a.track_count} of ${a.online_total} songs saved` : `${a.track_count} songs`}, ${fmtLong(a.duration || 0)}</span>${a.genre ? `<span class="sep"></span><span>${esc(a.genre)}</span>` : ''}</div></div></div>
     <div class="actions"><button class="play-big" id="play">${icon('play', 26)}</button>
       <button class="icon-btn" id="shuf" title="Shuffle play">${icon('shuffle', 26)}</button>
-      <button class="icon-btn" id="more" title="More">${icon('more', 26)}</button></div>
+      <button class="icon-btn" id="more" title="More">${icon('more', 26)}</button>
+      ${a.online_total > a.track_count && store.settings.online ? `<button class="btn primary" id="dlrest" style="height:44px;padding:0 20px">${icon('download', 18)} Download the rest (${a.online_total - a.track_count})</button>` : ''}</div>
     <div id="list"></div><div id="missing" style="padding:0 24px"></div><div id="more-by" style="padding:0 24px"></div>`;
   heroColor(view.querySelector('#hero'), a.cover);
   bindCards(view);
@@ -33,12 +34,27 @@ export async function localAlbum(view, id) {
   api.get(`/api/albums/${id}/online`).then(({ match }) => {
     if (!match || !view.contains(view.querySelector('#missing'))) return;
     const missing = match.tracks.filter((t) => !t.saved);
-    if (!missing.length) return;
+    // the prominent "Download the rest" button in the actions row
+    let btn = view.querySelector('#dlrest');
+    if (!missing.length) { btn?.remove(); return; }
+    if (!btn) {
+      view.querySelector('.actions').insertAdjacentHTML('beforeend',
+        `<button class="btn primary" id="dlrest" style="height:44px;padding:0 20px"></button>`);
+      btn = view.querySelector('#dlrest');
+    }
+    const queued = missing.every((t) => queuedState(t.id));
+    btn.innerHTML = queued ? `${icon('download', 18)} In your download queue` : `${icon('download', 18)} Download the rest (${missing.length} song${missing.length === 1 ? '' : 's'})`;
+    btn.disabled = queued;
+    btn.onclick = async () => {
+      await downloadAlbum(match.id);
+      btn.innerHTML = `${icon('download', 18)} In your download queue`;
+      btn.disabled = true;
+    };
     const box = view.querySelector('#missing');
     box.innerHTML = `<div class="section"><div class="section-head"><h2>Missing from this album <small>${missing.length} not saved</small></h2>
       <button class="btn sm primary" id="dlmissing">${icon('download', 16)} Download missing</button></div><div id="mlist"></div></div>`;
     trackTable(box.querySelector('#mlist'), missing, { album: false, cover: false, number: 'track', col4: 'none' });
-    box.querySelector('#dlmissing').onclick = () => downloadAlbum(match.id);
+    box.querySelector('#dlmissing').onclick = () => btn.click();
   }).catch(() => {});
 }
 

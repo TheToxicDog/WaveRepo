@@ -272,3 +272,43 @@ def new_from_your_artists(limit_artists=12, max_age_days=365):
             seen.add(x["id"])
             uniq.append(x)
     return uniq[:24]
+
+
+def remember_release(local_album_id, catalog_album):
+    """Store the catalog's release type and track count for a local album."""
+    rtype = catalog_album.get("type") or catalog_album.get("record_type") or ""
+    total = catalog_album.get("track_count") or catalog_album.get("nb_tracks") or len(catalog_album.get("tracks") or [])
+    with db.tx() as c:
+        c.execute("INSERT OR REPLACE INTO kv(k, v) VALUES (?, ?)", (f"release:{local_album_id}", f"{rtype}|{total or ''}"))
+
+
+def learn_release_types(limit=300):
+    """After a scan: look up albums whose files don't say album / EP / single,
+    so a partly-downloaded album (3 of 12 songs) isn't mistaken for a single,
+    and so we know how many songs it's missing. Each album is looked up once."""
+    if not settings.get("online", True):
+        return
+    from .scanner import rebuild_aggregates
+    todo = db.rows("""SELECT a.id, a.title, a.artist FROM albums a
+                      WHERE a.track_count > 1
+                        AND NOT EXISTS (SELECT 1 FROM kv WHERE kv.k = 'release:' || a.id)
+                      LIMIT ?""", (limit,))
+    changed = 0
+    for a in todo:
+        try:
+            found = find_album(a["artist"], a["title"])
+        except Offline:
+            return
+        except Exception:  # noqa: BLE001 - one bad lookup shouldn't stop the rest
+            found = None
+        if found:
+            remember_release(a["id"], found)
+        else:
+            with db.tx() as c:  # not in the catalog: don't ask again
+                c.execute("INSERT OR REPLACE INTO kv(k, v) VALUES (?, '|')", (f"release:{a['id']}",))
+        changed += 1
+    if changed:
+        with db.tx() as c:
+            rebuild_aggregates(c)
+        from . import events
+        events.publish("library", {"reason": "release-types"})
