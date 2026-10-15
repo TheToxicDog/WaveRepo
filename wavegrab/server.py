@@ -10,7 +10,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import catalog, db, downloader, events, lrc, lyrics, organizer, scanner, tools
+from . import catalog, db, downloader, events, lrc, lyrics, organizer, scanner, tools, updater
 from .config import settings
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -655,6 +655,17 @@ def organize_apply(album_ids: list[str] = Body(None, embed=True)):
 @app.post("/api/organize/undo")
 def organize_undo(log: str = Body(..., embed=True)):
     return organizer.undo(log)
+
+
+@app.get("/api/update")
+def update_state():
+    return {"version": updater.current_version(), **updater.last_result}
+
+
+@app.post("/api/update/check")
+def update_check():
+    status, msg = updater.run(status=lambda m: None)
+    return {"version": updater.current_version(), "status": status, "message": msg}
 
 
 @app.post("/api/tools/ffmpeg")

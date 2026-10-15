@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 — checks for updates on launch (2026-10-15)
+- **WaveGrab checks for updates every time it opens.** The window shows a splash screen ("Checking for updates…"). If GitHub has a newer version, it downloads and installs it (plus any new requirements), then restarts into the new version. If you're offline, it opens the version you have.
+- Works for a **git clone** (`git pull --ff-only`, skipped if you edited files) and for a **downloaded zip** (fetches the latest commit's zip and copies it over the app folder; `.venv` and your library data aren't touched).
+- **Settings → Updates:** turn the launch check off, see the current version, or "Check now".
+- `python run.py --no-update-check` skips the check once.
+- Added a `VERSION` file.
+
 ## 0.4.0 — albums only, download the rest (2026-10-15)
 - **The Albums page shows only full albums.** Singles and EPs have their own **Singles & EPs** page (sidebar and library tabs) and their own section on artist pages.
 - How a release is classified: the file's release-type tag (`MusicBrainz Album Type` / `RELEASETYPE`) when present. Otherwise the online catalog is checked once per album and cached. Otherwise Spotify's rule: 1–3 songs under 30 min is a single, 4–6 songs under 30 min is an EP.

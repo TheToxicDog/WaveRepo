@@ -80,6 +80,7 @@ def _default_settings() -> dict:
         "eq_preset": "flat",
         "eq_gains": [0] * 10,
         "online": True,                  # allow catalog lookups / downloads
+        "check_updates": True,           # look for a new WaveGrab version every time it opens
         "port": 8765,
     }
 

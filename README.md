@@ -26,6 +26,8 @@ A Spotify-style music player that runs **100% on your own PC**: your own music f
 
 Manual start: `pip install -r requirements.txt` then `python run.py` (add `--browser` to use a browser tab instead of a window).
 
+**Updates:** every time WaveGrab opens, it checks GitHub for a new version and installs it before starting. This works whether you cloned the repo with git or downloaded the zip. You can turn this off in Settings → Updates.
+
 ### Optional
 - If YouTube ever asks you to confirm you're not a bot, go to **Settings → Downloads → Use browser cookies** and pick your browser.
 - A YouTube Music Premium `cookies.txt` unlocks 256 kbps audio.

@@ -25,6 +25,14 @@ WaveGrab follows the same split the research report describes for Spotify's desk
 └────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Startup and updates
+
+`run.py` opens the window right away with a small splash page, then runs `wavegrab/updater.py` (standard library only) before the server is even imported:
+- **git clone:** `git fetch` the current branch. If it's behind and no tracked files were edited, `git pull --ff-only`.
+- **zip download:** read the repo's default branch and latest commit from the GitHub API and compare it with `installed_commit` in the data folder. If they differ, download `codeload.github.com/<repo>/zip/<sha>` and copy it over the app folder, skipping `.venv` and `.git`.
+
+If `requirements.txt` changed, `pip install -r requirements.txt` runs. After an update the process restarts itself (`--no-update-check`) so the new code loads. Network errors fall through to a normal start. The check can be disabled with `check_updates` in settings.
+
 ## Library and storage
 
 - **Scanning** (`scanner.py`) walks every folder in *Settings → Music folders*. A file is only re-read when its size or mtime changes, so rescans are fast. Tags come from mutagen's "easy" interface (ID3, MP4, FLAC, Vorbis/Opus, ASF). Missing tags fall back to the file and folder names (`01 - Title.mp3`, `Artist/Album/`).

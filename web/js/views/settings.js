@@ -87,6 +87,10 @@ export async function settingsView(view) {
       ${row('Online features', 'Album search, discovery, downloads and lyric lookups. Turn off for 100% offline.', toggle('online', s.online))}
       ${row('Find missing lyrics', 'Look up lyrics for songs that don’t have any (runs in the background)', `<button class="btn" id="backfill">${icon('lyrics', 16)} Find lyrics</button>`)}
     </div>
+    <div class="set-group"><h3>Updates</h3>
+      ${row('Check for updates when WaveGrab opens', 'Downloads and installs new versions from GitHub before the app starts', toggle('check_updates', s.check_updates))}
+      ${row(`Version <span id="upd-ver" class="faint"></span>`, '<span id="upd-msg"></span>', `<button class="btn" id="upd-now">${icon('refresh', 16)} Check now</button>`)}
+    </div>
     <p class="faint" style="font-size:12px">Data folder: ${esc(s.data_home)}</p></div>`;
 
   view.querySelector('#effects').value = s.effects === 'off' ? 'off' : 'ambient';
@@ -100,6 +104,18 @@ export async function settingsView(view) {
     settingsView(view);
   });
   bindOrganizer(view);
+  const showUpd = (u) => {
+    view.querySelector('#upd-ver').textContent = u.version;
+    view.querySelector('#upd-msg').textContent = u.status === 'updated'
+      ? 'Update installed. Restart WaveGrab to use it.' : (u.message || '');
+  };
+  api.get('/api/update').then(showUpd).catch(() => {});
+  view.querySelector('#upd-now').onclick = async (e) => {
+    e.target.disabled = true;
+    view.querySelector('#upd-msg').textContent = 'Checking…';
+    showUpd(await api.post('/api/update/check').catch((err) => ({ version: '', message: err.message })));
+    e.target.disabled = false;
+  };
   view.querySelector('#shufmode').value = player.shuffleMode;
   view.querySelector('#eqpreset').value = s.eq_preset || 'flat';
 
