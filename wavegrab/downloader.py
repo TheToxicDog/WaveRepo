@@ -2,17 +2,20 @@
 
 Queue items live in the `downloads` table so the queue survives restarts.
 The worker:
-  1. finds the best YouTube match for "artist - title" (duration-scored,
-     prefers YouTube Music "- Topic" uploads and official audio)
-  2. downloads it with yt-dlp and converts to the chosen format
+  1. downloads the song with spotDL (Spotify metadata + YouTube Music audio
+     matching). If spotDL can't find it, falls back to WaveGrab's own
+     duration-scored YouTube search + yt-dlp
+  2. converts to the chosen format
   3. tags it (title/artist/album/track/disc/year/genre/cover) with mutagen
   4. fetches lyrics from LRCLIB and writes a .lrc sidecar
   5. moves it into  <download_dir>/<Album Artist>/<Album>/<NN Title>.ext
      and adds it to the library index immediately
 """
+import json
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -20,7 +23,7 @@ from pathlib import Path
 
 import httpx
 
-from . import catalog, db, events, lyrics, scanner
+from . import catalog, db, events, lyrics, scanner, tools
 from .config import settings
 
 try:
@@ -95,12 +98,12 @@ def enqueue(items: list[dict], group_title="") -> list[int]:
             cur = c.execute(
                 """INSERT INTO downloads(position, status, kind, title, artist, album, album_artist, track_no,
                    disc_no, year, genre, duration, cover_url, catalog_id, source_url, group_id, group_title,
-                   created_at) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   created_at, multi_disc) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (pos, it.get("kind", "track"), it.get("title") or it.get("source_url") or "Unknown",
                  it.get("artist", ""), it.get("album", ""), it.get("album_artist") or it.get("artist", ""),
                  it.get("track_no"), it.get("disc_no"), _int(it.get("year")), it.get("genre", ""),
                  it.get("duration"), it.get("cover_url", ""), str(it.get("catalog_id") or ""),
-                 it.get("source_url", ""), gid, group_title, _now()))
+                 it.get("source_url", ""), gid, group_title, _now(), 1 if it.get("multi_disc") else 0))
             ids.append(cur.lastrowid)
             pos += 1
     _wake.set()
@@ -117,13 +120,19 @@ def _int(v):
 
 def enqueue_album(album_id: str, only_missing=True):
     a = catalog.album(album_id)
-    items = []
+    multi = any((t.get("disc_no") or 1) > 1 for t in a["tracks"])
+    items, seen = [], set()
     for t in a["tracks"]:
+        # never queue the same song twice for one album
+        key = (catalog.norm_title(t["title"]), t.get("disc_no") or 1)
+        if key in seen:
+            continue
+        seen.add(key)
         if only_missing and t["saved"]:
             continue
         items.append(dict(title=t["title"], artist=t["artist"], album=a["title"], album_artist=a["artist"],
                           track_no=t["track_no"], disc_no=t["disc_no"], year=a["year"], genre=a.get("genre", ""),
-                          duration=t["duration"], cover_url=a["cover"], catalog_id=t["id"]))
+                          duration=t["duration"], cover_url=a["cover"], catalog_id=t["id"], multi_disc=multi))
     return enqueue(items, group_title=f"{a['artist']} — {a['title']}")
 
 
@@ -148,7 +157,7 @@ def enqueue_url(url: str, mode="audio"):
     Spotify links are handed to spotDL when it's installed."""
     url = url.strip()
     if "open.spotify.com" in url or url.startswith("spotify:"):
-        return enqueue([dict(kind="spotdl", title=url, source_url=url)])
+        return enqueue_spotify(url)
     kind = "video" if mode == "video" else "url"
     if yt_dlp is None:
         raise RuntimeError("yt-dlp is not installed")
@@ -172,6 +181,38 @@ def enqueue_url(url: str, mode="audio"):
                          artist=info.get("artist") or info.get("uploader") or "",
                          album=info.get("album") or "", duration=info.get("duration"), source_url=url,
                          cover_url=info.get("thumbnail") or "")])
+
+
+def enqueue_spotify(url: str):
+    """Spotify track / album / playlist link -> one queue item per song,
+    using `spotdl save` to read the metadata (no Spotify login needed)."""
+    if not tools.has_spotdl():
+        raise RuntimeError("spotDL is missing: pip install spotdl")
+    with tempfile.TemporaryDirectory() as td:
+        save = Path(td) / "list.spotdl"
+        r = subprocess.run(tools.spotdl_cmd() + ["save", url, "--save-file", str(save), "--log-level", "ERROR"],
+                           capture_output=True, text=True, errors="replace", timeout=900)
+        if not save.exists():
+            raise RuntimeError((r.stdout + r.stderr).strip().splitlines()[-1:] or "spotDL couldn't read that link")
+        songs = json.loads(save.read_text("utf-8"))
+    # a single album: queue in track order (playlists keep their own order)
+    if songs and len({(sg.get("album_name"), sg.get("album_artist")) for sg in songs}) == 1:
+        songs.sort(key=lambda sg: (sg.get("disc_number") or 1, sg.get("track_number") or 0))
+    multi = any((sg.get("disc_number") or 1) > 1 for sg in songs)
+    items = []
+    for sg in songs:
+        items.append(dict(kind="track", title=sg.get("name", ""), artist=sg.get("artist", ""),
+                          album=sg.get("album_name", ""), album_artist=sg.get("album_artist") or sg.get("artist", ""),
+                          track_no=sg.get("track_number"), disc_no=sg.get("disc_number"), year=sg.get("year"),
+                          genre=(sg.get("genres") or [""])[0].title() if sg.get("genres") else "",
+                          duration=sg.get("duration"), cover_url=sg.get("cover_url", ""),
+                          catalog_id="spotify:" + str(sg.get("song_id", "")), source_url=sg.get("url", ""),
+                          multi_disc=multi))
+    # songs that are already in the library aren't queued at all
+    items = [it for it in items if not existing_copy(_align_with_library(dict(it)))]
+    title = songs[0].get("list_name") if songs and songs[0].get("list_name") else (
+        f"{songs[0].get('album_artist')} — {songs[0].get('album_name')}" if len(songs) > 1 else "")
+    return enqueue(items, group_title=title or "Spotify")
 
 
 def reorder(ids: list[int]):
@@ -237,6 +278,9 @@ def stats():
 
 def _net_opts():
     opts = {"socket_timeout": 20, "retries": 5, "fragment_retries": 5}
+    ff = tools.ffmpeg_exe()
+    if ff:
+        opts["ffmpeg_location"] = ff
     cookies = settings.get("cookies_file")
     if cookies and Path(cookies).exists():
         opts["cookiefile"] = cookies
@@ -336,15 +380,24 @@ def safe(name, fallback="Unknown"):
     return name[:120] or fallback
 
 
+def track_filename(title, track_no, disc_no=None, multi_disc=False):
+    """'01 Title' — the number prefix makes the files sort in album order.
+    Multi-disc albums get the disc first: '2-01 Title'."""
+    name = safe(title)
+    if track_no:
+        name = f"{int(track_no):02d} {name}"
+        if multi_disc or (disc_no and int(disc_no) > 1):
+            name = f"{int(disc_no or 1)}-{name}"
+    return name
+
+
 def target_path(meta, ext):
     base = Path(settings["download_dir"])
     if meta.get("kind") == "video":
         return base / "Music Videos" / f"{safe(meta.get('artist'))} - {safe(meta['title'])}.{ext}"
-    no = meta.get("track_no")
-    disc = meta.get("disc_no") or 1
-    name = f"{no:02d} {safe(meta['title'])}" if no else safe(meta["title"])
-    if no and disc > 1:
-        name = f"{disc}-{name}"
+    name = track_filename(meta["title"], meta.get("track_no"), meta.get("disc_no"), meta.get("multi_disc"))
+    if meta.get("_folder"):
+        return Path(meta["_folder"]) / f"{name}.{ext}"
     return base / safe(meta.get("album_artist") or meta.get("artist"), "Unknown Artist") / \
         safe(meta.get("album") or "Singles", "Singles") / f"{name}.{ext}"
 
@@ -471,26 +524,94 @@ def _enrich_from_catalog(meta):
     return meta
 
 
-def _run_spotdl(item):
-    exe = shutil.which("spotdl")
-    if not exe:
-        raise RuntimeError("Spotify links need spotDL: run  pip install spotdl")
-    out = str(Path(settings["download_dir"]) / "{album-artist}" / "{album}" / "{track-number} {title}.{output-ext}")
+def _align_with_library(meta):
+    """If this song belongs to an album that's already in the library, save it
+    in that album's folder with that album's names, so it joins the album
+    instead of starting a second copy (e.g. "Discovery" vs "Discovery (Remastered)")."""
+    local_id = catalog.match_album(meta.get("album_artist") or meta.get("artist", ""), meta.get("album", ""))
+    if not local_id:
+        return meta
+    a = db.row("SELECT title, artist FROM albums WHERE id=?", (local_id,))
+    t = db.row("SELECT path, disc_no FROM tracks WHERE album_id=? ORDER BY disc_no DESC LIMIT 1", (local_id,))
+    if a and t:
+        meta.update(album=a["title"], album_artist=a["artist"], _folder=str(Path(t["path"]).parent),
+                    _album_id=local_id, multi_disc=(t["disc_no"] or 1) > 1)
+    return meta
+
+
+def existing_copy(meta):
+    """Path of a copy of this song already in the same album, if any."""
+    album_id = meta.get("_album_id") or scanner.make_id(meta.get("album_artist") or meta.get("artist", ""),
+                                                        meta.get("album", ""))
+    want = catalog.norm_title(meta["title"])
+    for t in db.rows("SELECT path, title, duration FROM tracks WHERE album_id=?", (album_id,)):
+        if catalog.norm_title(t["title"]) != want:
+            continue
+        if meta.get("duration") and t["duration"] and abs(t["duration"] - float(meta["duration"])) > 6:
+            continue  # same name, different recording (e.g. a reprise)
+        return t["path"]
+    return None
+
+
+def _spotdl_fetch(item, meta, tmp: Path, did):
+    """Download one song with spotDL into tmp/audio.<ext>."""
     fmt = settings.get("audio_format", "m4a")
-    proc = subprocess.Popen([exe, "download", item["source_url"], "--output", out, "--format", fmt],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-    done = 0
+    query = item.get("source_url") if "spotify.com" in (item.get("source_url") or "") \
+        else f"{meta.get('artist', '')} - {meta['title']}"
+    cmd = tools.spotdl_cmd() + ["download", query, "--output", str(tmp / "audio.{output-ext}"),
+                                "--format", fmt, "--overwrite", "force", "--print-errors",
+                                "--simple-tui", "--log-level", "INFO"]
+    ff = tools.ffmpeg_exe()
+    if ff:
+        cmd += ["--ffmpeg", ff]
+    if fmt in ("m4a", "opus"):
+        cmd += ["--bitrate", "disable"]  # keep YouTube's stream as-is, no re-encode
+    elif fmt == "mp3":
+        cmd += ["--bitrate", f"{settings.get('mp3_quality', '320')}k"]
+    cookies = settings.get("cookies_file")
+    if cookies and Path(cookies).exists():
+        cmd += ["--cookie-file", cookies]
+    elif settings.get("cookies_browser"):
+        cmd += ["--yt-dlp-args", f"--cookies-from-browser {settings['cookies_browser']}"]
+    _update(did, progress=0.15, error="Downloading with spotDL…")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
+                            cwd=str(tmp))
+    lines = []
     for line in proc.stdout:
-        if item["id"] in _cancel:
+        if did in _cancel:
             proc.kill()
             raise DownloadCancelled()
-        if "Downloaded" in line:
-            done += 1
-            _update(item["id"], progress=min(0.95, done / max(done + 1, 2)), error=line.strip()[:200])
+        line = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+        if line:
+            lines.append(line)
+        m = re.search(r"(\d{1,3})%", line)
+        if m:
+            _update(did, progress=min(0.85, 0.15 + int(m.group(1)) / 100 * 0.7))
     proc.wait()
-    if proc.returncode:
-        raise RuntimeError("spotDL failed (see console)")
-    scanner.scan_async()
+    files = [f for f in tmp.glob("audio.*") if f.suffix.lower() not in (".lrc", ".jpg", ".png", ".webp", ".part")]
+    if not files:
+        errs = [l for l in lines if "rror" in l or "exception" in l.lower() or "No results" in l]
+        raise RuntimeError((errs or lines or ["spotDL found nothing"])[-1][:300])
+    return max(files, key=lambda f: f.stat().st_size)
+
+
+def _ytdlp_fetch(item, meta, tmp: Path, hook):
+    url = item.get("source_url")
+    if not url or "spotify.com" in url:
+        url, _entry = find_match(meta["title"], meta.get("artist", ""), meta.get("duration"))
+        _update(item["id"], matched_url=url)
+    opts, _ext = _format_opts(item["kind"])
+    opts.update({"outtmpl": str(tmp / "audio.%(ext)s"), "quiet": True, "noprogress": True,
+                 "progress_hooks": [hook], "noplaylist": True, **_net_opts()})
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+    files = sorted(tmp.glob("audio.*"), key=lambda p: p.stat().st_size, reverse=True)
+    files = [f for f in files if f.suffix.lower() not in (".part", ".ytdl", ".jpg", ".webp", ".png")]
+    if not files:
+        raise RuntimeError("Download produced no file")
+    if not meta.get("duration"):
+        meta["duration"] = info.get("duration")
+    return files[0]
 
 
 def process(item):
@@ -512,42 +633,49 @@ def process(item):
             _update(did, status="processing", progress=0.9)
 
     try:
-        if item["kind"] == "spotdl":
-            _run_spotdl(item)
-            _update(did, status="done", progress=1, finished_at=_now(), error="")
+        if item["kind"] == "spotdl":  # queue rows from older versions
+            ids = enqueue_spotify(item["source_url"])
+            _update(did, status="done", progress=1, finished_at=_now(), error=f"Expanded into {len(ids)} songs")
             return
-        if yt_dlp is None:
-            raise RuntimeError("yt-dlp is not installed (pip install yt-dlp)")
-        if not shutil.which("ffmpeg"):
-            raise RuntimeError("FFmpeg not found. Install it and add it to PATH (winget install ffmpeg)")
+        if not tools.ffmpeg_exe():
+            _update(did, error="Installing FFmpeg via spotDL…")
+            if not tools.install_ffmpeg():
+                raise RuntimeError("FFmpeg not found. Run: python -m spotdl --download-ffmpeg")
         if item["kind"] == "url":
             meta = _enrich_from_catalog(meta)
-        url = item.get("source_url")
-        if not url:
-            url, entry = find_match(item["title"], item["artist"], item.get("duration"))
-            _update(did, matched_url=url)
-        opts, ext = _format_opts(item["kind"])
-        opts.update({"outtmpl": str(tmp / "audio.%(ext)s"), "quiet": True, "noprogress": True,
-                     "progress_hooks": [hook], "noplaylist": True, **_net_opts()})
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-        files = sorted(tmp.glob("audio.*"), key=lambda p: p.stat().st_size, reverse=True)
-        files = [f for f in files if f.suffix.lower() not in (".part", ".ytdl", ".jpg", ".webp", ".png")]
-        if not files:
-            raise RuntimeError("Download produced no file")
-        src = files[0]
+        audio = item["kind"] != "video"
+        if audio:
+            meta = _align_with_library(meta)
+            dup = existing_copy(meta)
+            if dup:
+                _update(did, status="done", progress=1, finished_at=_now(), file_path=dup,
+                        error="Already in your library — skipped")
+                return
+        src = None
+        if audio and item["kind"] == "track" and settings.get("download_engine", "spotdl") == "spotdl" \
+                and tools.has_spotdl():
+            try:
+                src = _spotdl_fetch(item, meta, tmp, did)
+            except DownloadCancelled:
+                raise
+            except Exception as e:  # noqa: BLE001 - fall back to the built-in matcher
+                _update(did, progress=0.1, error=f"spotDL: {str(e)[:120]} — trying direct YouTube search")
+                for f in tmp.glob("*"):
+                    f.unlink(missing_ok=True) if f.is_file() else shutil.rmtree(f, ignore_errors=True)
+        if src is None:
+            if yt_dlp is None:
+                raise RuntimeError("yt-dlp is not installed (pip install yt-dlp)")
+            src = _ytdlp_fetch(item, meta, tmp, hook)
+        _update(did, status="processing", progress=0.9, error="Tagging…")
         ext = src.suffix.lstrip(".")
-        if not meta.get("duration"):
-            meta["duration"] = info.get("duration")
         dest = target_path(meta, ext)
-        if item["kind"] != "video":
-            cover = _download_cover(meta.get("cover_url"))
-            tag_file(src, meta, cover)
+        if audio:
+            tag_file(src, meta, _download_cover(meta.get("cover_url")))
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             dest.unlink()
         shutil.move(str(src), dest)
-        if item["kind"] != "video":
+        if audio:
             if settings.get("fetch_lyrics", True):
                 _update(did, status="processing", progress=0.95, error="Fetching lyrics…")
                 text = lyrics.fetch(meta["title"], meta.get("artist", ""), meta.get("album", ""),

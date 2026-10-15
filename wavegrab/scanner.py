@@ -239,7 +239,9 @@ def rebuild_aggregates(conn):
         FROM tracks GROUP BY artist_id""")
     for a in conn.execute("SELECT id, name FROM artists").fetchall():
         conn.execute("UPDATE artists SET norm=?, cover_album=(SELECT id FROM albums WHERE artist_id=? "
-                     "ORDER BY year DESC LIMIT 1) WHERE id=?", (norm(a["name"]), a["id"], a["id"]))
+                     "ORDER BY track_count > 1 DESC, year DESC LIMIT 1) WHERE id=?", (norm(a["name"]), a["id"], a["id"]))
+    conn.execute("UPDATE artists SET album_count=(SELECT COUNT(*) FROM albums WHERE albums.artist_id=artists.id "
+                 "AND track_count > 1)")
     # restore artist images fetched from the catalog earlier
     for k, v in conn.execute("SELECT k, v FROM kv WHERE k LIKE 'artist_img:%'").fetchall():
         conn.execute("UPDATE artists SET image_url=? WHERE id=?", (v, k.split(":", 1)[1]))

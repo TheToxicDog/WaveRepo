@@ -269,20 +269,6 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'Escape') $('#nowplaying').classList.remove('open');
 });
 
-// click "ink" ripple on buttons, cards and rows
-addEventListener('pointerdown', (e) => {
-  const el = e.target.closest('.btn, .card, .chip, .tile, .nav a, .pl-item');
-  if (!el) return;
-  const r = el.getBoundingClientRect(), s = Math.max(r.width, r.height);
-  const ink = document.createElement('span');
-  ink.className = 'ripple-ink';
-  ink.style.cssText = `width:${s}px;height:${s}px;left:${e.clientX - r.left - s / 2}px;top:${e.clientY - r.top - s / 2}px`;
-  if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
-  el.style.overflow = 'hidden';
-  el.appendChild(ink);
-  setTimeout(() => ink.remove(), 600);
-});
-
 // ------------------------------------------------------------ settings application
 function applySettings() {
   const s = store.settings;

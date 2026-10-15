@@ -37,3 +37,12 @@ def test_plain_lyrics():
 def test_fraction_precision():
     p = lrc.parse("[01:02.5]a\n[01:02.05]b\n[01:02.005]c")
     assert [l["t"] for l in p["lines"]] == [62005, 62050, 62500]
+
+
+def test_track_filenames_sort_in_album_order():
+    from wavegrab.downloader import track_filename
+    names = [track_filename(t, n) for t, n in [("Intro", 1), ("Song: Two?", 2), ("Ten", 10)]]
+    assert names == ["01 Intro", "02 Song_ Two_", "10 Ten"]
+    assert sorted(names) == names
+    assert track_filename("A", 3, 2) == "2-03 A"
+    assert track_filename("A", 3, 1, multi_disc=True) == "1-03 A"

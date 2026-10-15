@@ -163,7 +163,8 @@ CREATE TABLE IF NOT EXISTS downloads (
     file_path TEXT DEFAULT '',
     matched_url TEXT DEFAULT '',
     created_at INTEGER,
-    finished_at INTEGER
+    finished_at INTEGER,
+    multi_disc INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status, position);
 
@@ -189,6 +190,10 @@ def init():
     conn = connect()
     with _write_lock:
         conn.executescript(SCHEMA)
+        # lightweight migrations for databases made by older versions
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(downloads)")}
+        if "multi_disc" not in cols:
+            conn.execute("ALTER TABLE downloads ADD COLUMN multi_disc INTEGER DEFAULT 0")
         conn.commit()
 
 

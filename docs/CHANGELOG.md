@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.0 — spotDL, album order, no duplicates (2026-10-15)
+
+### Downloads
+- **spotDL is now a required dependency and the main download engine.** It uses Spotify's metadata and YouTube Music matching. If spotDL can't get a song, WaveGrab's own YouTube search takes over automatically. You can choose the engine under Settings → Downloads.
+- Spotify track, album and playlist links become one queue item per song (in track order for albums), and songs you already have are left out.
+- FFmpeg can be installed by spotDL: automatically by `start-wavegrab.bat`, from Settings → Tools, or on the first download.
+- Songs download into the existing album folder when you already have part of the album, so they join it instead of creating a second copy.
+- Songs an album already has are skipped ("Already in your library"), and an album download never queues the same song twice.
+
+### Album order
+- Downloaded album songs are named `01 Title`, `02 Title`… (`2-01 Title` on multi-disc albums), so the files sort in album order.
+- New **Settings → Organize library**: renames your existing album files to the same pattern in the official track order (looked up online when your tags are missing or conflicting), writes the track numbers into the tags, and moves `.lrc` lyric files along. It shows every change first, and there's an Undo button.
+
+### Duplicates and 1-song albums
+- Organize library also finds duplicate songs within an album, keeps the best copy, and moves the rest to a hidden `.wavegrab-duplicates` folder (nothing is deleted).
+- A single song no longer shows up as an album. Lone songs are listed under Songs and in a new "Singles & loose songs" section on artist pages.
+
+### Look
+- Removed the mouse/cursor effects (ripples, particles, cursor glow, click ripples). The background is now a soft ambient glow that pulses with the music, or Off.
+
+### Under the hood
+- Audio seeking now uses a built-in HTTP Range handler, because spotDL pins an older web framework.
+- Database migration adds a `multi_disc` flag to queued downloads.
+
 ## 0.1.0 — first build (2026-10-15)
 
 The first complete version of the WaveGrab player: an offline, Spotify-style app with the downloader built in.

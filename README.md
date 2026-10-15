@@ -10,22 +10,22 @@ A Spotify-style music player that runs **100% on your own PC**: your own music f
 - **Browse like Spotify.** Home, Albums, Artists, Songs, Liked Songs and playlists, with album and artist pages, a queue, and a now-playing bar.
 - **Search everything, including lyrics.** Full-text search (SQLite FTS5 + BM25 ranking) across titles, artists, albums, genres and **lyrics**. Click a lyric match to jump straight to that line in the song.
 - **See what you don't have.** Search results, artist discographies and albums show music from the internet with a clear **Not saved** badge. Your albums show which tracks are missing. One click downloads them.
-- **Download queue.** A dedicated page with drag-to-reorder, move to top, hold/resume, cancel, retry, pause all, and live progress. Paste YouTube / YouTube Music / SoundCloud links (or Spotify links, if spotDL is installed) like classic WaveGrab.
+- **Download queue, powered by spotDL.** A dedicated page with drag-to-reorder, move to top, hold/resume, cancel, retry, pause all, and live progress. spotDL finds each song using Spotify's data and YouTube Music; if it can't, WaveGrab's own YouTube search takes over. Paste Spotify, YouTube, YouTube Music or SoundCloud links like classic WaveGrab.
+- **Albums stay in order.** Album downloads are saved as `01 Title`, `02 Title`… so they sort in track order everywhere. **Settings → Organize library** does the same for the music you already have: it looks up the official track order online when your tags don't have it, and removes duplicate songs from albums (with a preview first, and undo).
+- **No duplicates, no 1-song "albums".** Downloads skip songs an album already has, missing tracks are saved into the existing album folder, and lone songs show up under Songs and the artist's "Singles & loose songs" instead of as albums.
 - **Synced lyrics.** Reads `.lrc` files next to your songs (or embedded lyrics) and highlights each line as it's sung. Downloads fetch lyrics from LRCLIB automatically.
 - **Sound.** 10-band EQ with presets, crossfade, and three shuffle styles: *Fewer repeats* (default), *Balanced artist spread*, and *Standard*.
-- **Looks.** 8 themes, background effects that react to your mouse and the music (ripples, particles, cursor glow), and colours that match the playing album.
+- **Looks.** 8 themes, a soft background glow that pulses with the music, and colours that match the playing album.
 
 ## Running it (Windows)
 
 1. Install **Python 3.11+** from python.org (tick "Add to PATH").
-2. Install **FFmpeg** (needed for downloads): `winget install ffmpeg`.
-3. Double-click **`start-wavegrab.bat`**. The first run sets everything up, then WaveGrab opens in its own window.
-4. In **Settings → Music folders**, add your external drive's music folder (for example `E:\Music`). WaveGrab finds an external drive's `Music` folder by itself if there is one.
+2. Double-click **`start-wavegrab.bat`**. The first run installs everything, including spotDL and (through spotDL) FFmpeg if you don't have it, then WaveGrab opens in its own window.
+3. In **Settings → Music folders**, add your external drive's music folder (for example `E:\Music`). WaveGrab finds an external drive's `Music` folder by itself if there is one.
 
 Manual start: `pip install -r requirements.txt` then `python run.py` (add `--browser` to use a browser tab instead of a window).
 
 ### Optional
-- `pip install spotdl` lets you paste Spotify playlist and album links in Downloads.
 - If YouTube ever asks you to confirm you're not a bot, go to **Settings → Downloads → Use browser cookies** and pick your browser.
 - A YouTube Music Premium `cookies.txt` unlocks 256 kbps audio.
 

@@ -48,9 +48,9 @@ export async function settingsView(view) {
     <div class="set-group"><h3>Appearance</h3>
       <div class="themes" id="themes">${THEMES.map((t) => `<button class="theme-sw ${s.theme === t.id ? 'active' : ''}" data-theme-id="${t.id}" style="background:${t.bg};color:${t.fg}">
         <div class="dots">${t.dots.map((c) => `<i style="background:${c}"></i>`).join('')}</div>${t.name}</button>`).join('')}</div>
-      ${row('Background effect', 'Reacts to your mouse and pulses with the music', `<select class="input" id="effects">
-        <option value="ripples">Ripples</option><option value="particles">Particles</option><option value="glow">Cursor glow</option><option value="off">Off</option></select>`)}
-      ${row('Effect intensity', '', `<input type="range" class="range" id="intensity" min="0.1" max="1" step="0.05" value="${s.effects_intensity}">`)}
+      ${row('Background', 'Soft colour glow behind the app that gently pulses with the music', `<select class="input" id="effects">
+        <option value="ambient">Ambient</option><option value="off">Off</option></select>`)}
+      ${row('Background strength', '', `<input type="range" class="range" id="intensity" min="0.1" max="1" step="0.05" value="${s.effects_intensity}">`)}
       ${row('Match album colours', 'Tint the player and effects with the colours of the album that’s playing', toggle('adaptive_color', s.adaptive_color))}
     </div>
 
@@ -62,6 +62,8 @@ export async function settingsView(view) {
     </div>
 
     <div class="set-group"><h3>Downloads</h3>
+      ${row('Download engine', '<b>spotDL</b> finds the right song using Spotify’s data and YouTube Music (falls back to WaveGrab’s own YouTube search if it fails)', `<select class="input" id="engine">
+        <option value="spotdl">spotDL (recommended)</option><option value="ytdlp">Built-in YouTube search</option></select>`)}
       ${row('Download folder', esc(s.download_dir), `<button class="btn" id="dl-dir">${icon('folder', 16)} Change</button>`)}
       ${row('Audio format', 'M4A keeps YouTube’s audio without re-encoding (best quality). MP3 works everywhere.', `<select class="input" id="fmt">
         <option value="m4a">M4A (AAC, no re-encode)</option><option value="opus">Opus</option><option value="mp3">MP3</option><option value="flac">FLAC</option></select>`)}
@@ -70,9 +72,16 @@ export async function settingsView(view) {
         ${['', 'chrome', 'edge', 'firefox', 'brave', 'opera'].map((b) => `<option value="${b}" ${s.cookies_browser === b ? 'selected' : ''}>${b ? b[0].toUpperCase() + b.slice(1) : 'Off'}</option>`).join('')}</select>`)}
       ${row('YouTube Music cookies', 'Optional cookies.txt from a Premium account unlocks 256 kbps audio', `<input class="input" id="cookies" value="${esc(s.cookies_file)}" placeholder="C:\\path\\cookies.txt">`)}
       ${row('Parallel downloads', 'Takes effect after restart', `<select class="input" id="parallel" style="width:90px">${[1, 2, 3, 4].map((n) => `<option ${s.max_parallel_downloads == n ? 'selected' : ''}>${n}</option>`).join('')}</select>`)}
-      ${row('Tools', 'Needed for downloading', `<span class="${s.ytdlp ? 'ok-dot' : 'bad-dot'}">yt-dlp ${s.ytdlp ? '✓' : '✗'}</span>
-        <span class="${s.ffmpeg ? 'ok-dot' : 'bad-dot'}">FFmpeg ${s.ffmpeg ? '✓' : '✗'}</span><span class="${s.spotdl ? 'ok-dot' : 'faint'}">spotDL ${s.spotdl ? '✓' : '(optional)'}</span>`)}
+      ${row('Tools', 'Needed for downloading', `<span class="${s.spotdl ? 'ok-dot' : 'bad-dot'}">spotDL ${s.spotdl ? '✓' : '✗'}</span>
+        <span class="${s.ytdlp ? 'ok-dot' : 'bad-dot'}">yt-dlp ${s.ytdlp ? '✓' : '✗'}</span>
+        <span class="${s.ffmpeg ? 'ok-dot' : 'bad-dot'}">FFmpeg ${s.ffmpeg ? '✓' : '✗'}</span>
+        ${!s.ffmpeg && s.spotdl ? `<button class="btn sm" id="get-ffmpeg">Install FFmpeg</button>` : ''}`)}
     </div>
+
+    <div class="set-group"><h3>Organize library</h3>
+      <p class="muted" style="margin:4px 0 8px;font-size:13px">Renames every album's files to <b>01 Title</b>, <b>02 Title</b>… in the official track order (looked up online when your tags don't say), writes the track numbers into the tags, and removes duplicate songs from albums. You'll see every change before anything happens. Duplicates are moved to a hidden <code>.wavegrab-duplicates</code> folder, not deleted, and the whole thing can be undone.</p>
+      <div class="row" style="padding:6px 0 14px"><button class="btn primary" id="org-check">${icon('refresh', 16)} Check my albums</button><span class="muted" id="org-status" style="font-size:13px"></span></div>
+      <div id="org-result"></div></div>
 
     <div class="set-group"><h3>Online</h3>
       ${row('Online features', 'Album search, discovery, downloads and lyric lookups. Turn off for 100% offline.', toggle('online', s.online))}
@@ -80,8 +89,17 @@ export async function settingsView(view) {
     </div>
     <p class="faint" style="font-size:12px">Data folder: ${esc(s.data_home)}</p></div>`;
 
-  view.querySelector('#effects').value = s.effects;
+  view.querySelector('#effects').value = s.effects === 'off' ? 'off' : 'ambient';
   view.querySelector('#fmt').value = s.audio_format;
+  view.querySelector('#engine').value = s.download_engine || 'spotdl';
+  view.querySelector('#engine').onchange = (e) => saveSettings({ download_engine: e.target.value });
+  view.querySelector('#get-ffmpeg')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Installing…';
+    const r = await api.post('/api/tools/ffmpeg').catch(() => ({ ok: false }));
+    toast(r.ok ? 'FFmpeg installed' : 'Couldn’t install FFmpeg', r.ok ? '' : 'error');
+    settingsView(view);
+  });
+  bindOrganizer(view);
   view.querySelector('#shufmode').value = player.shuffleMode;
   view.querySelector('#eqpreset').value = s.eq_preset || 'flat';
 
@@ -135,4 +153,56 @@ export async function settingsView(view) {
     if (k === 'eq') player.setEqEnabled(on);
     else await saveSettings({ [k]: on });
   }));
+}
+
+// ------------------------------------------------------------ organizer
+function bindOrganizer(view) {
+  const status = view.querySelector('#org-status'), box = view.querySelector('#org-result');
+  const poll = async () => {
+    if (!view.isConnected) return;
+    const st = await api.get('/api/organize');
+    if (st.running) {
+      status.innerHTML = `${icon('refresh', 14, 'spin')} Checking album ${st.done} of ${st.total}…`;
+      setTimeout(poll, 700);
+      return;
+    }
+    status.textContent = st.error ? `Error: ${st.error}` : '';
+    if (st.plan) renderPlan(box, st.plan, view);
+  };
+  view.querySelector('#org-check').onclick = async () => {
+    box.innerHTML = '';
+    await api.post('/api/organize/plan');
+    poll();
+  };
+  api.get('/api/organize').then((st) => { if (st.running || st.plan) poll(); });
+}
+
+function renderPlan(box, plan, view) {
+  if (!plan.length) {
+    box.innerHTML = `<div class="offline-note">${icon('check', 18)} Every album is already in order with no duplicates.</div>`;
+    return;
+  }
+  const renames = plan.reduce((n, p) => n + p.renames.length, 0), dups = plan.reduce((n, p) => n + p.duplicates.length, 0);
+  const src = { tags: 'from your tags', online: 'order looked up online', filenames: 'not found online — kept current order' };
+  const base = (p) => p.split(/[\\/]/).pop();
+  box.innerHTML = `<div class="row" style="margin-bottom:10px"><b>${plan.length} album${plan.length === 1 ? '' : 's'} to fix</b><span class="muted">${renames} file${renames === 1 ? '' : 's'} to rename • ${dups} duplicate${dups === 1 ? '' : 's'}</span>
+      <span class="spacer"></span><button class="btn primary" id="org-apply">${icon('check', 16)} Apply all</button></div>
+    <div class="org-list">${plan.map((p) => `<details class="org-album"><summary><b>${esc(p.title)}</b> <span class="muted">— ${esc(p.artist)}</span>
+        <span class="pill">${p.renames.length} rename${p.renames.length === 1 ? '' : 's'}</span>${p.duplicates.length ? `<span class="pill" style="color:var(--warn)">${p.duplicates.length} duplicate${p.duplicates.length === 1 ? '' : 's'}</span>` : ''}
+        <span class="faint" style="font-size:12px">${src[p.source]}</span></summary>
+      ${p.renames.map((r) => `<div class="org-row"><span class="faint">${esc(base(r.old))}</span> → <b>${esc(base(r.new))}</b></div>`).join('')}
+      ${p.duplicates.map((d) => `<div class="org-row" style="color:var(--warn)">${icon('trash', 13)} Duplicate: ${esc(base(d.path))} <span class="faint">(keeping ${esc(base(d.keep_path))})</span></div>`).join('')}
+      </details>`).join('')}</div>`;
+  box.querySelector('#org-apply').onclick = async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = 'Renaming…';
+    const r = await api.post('/api/organize/apply', {});
+    box.innerHTML = `<div class="offline-note">${icon('check', 18)} Renamed ${r.renamed} files and removed ${r.duplicates_moved} duplicates.${r.errors.length ? ` ${r.errors.length} couldn't be changed (in use or read-only).` : ''}
+      <span class="spacer"></span><button class="btn sm" id="org-undo">Undo</button></div>`;
+    box.querySelector('#org-undo').onclick = async () => {
+      await api.post('/api/organize/undo', { log: r.undo_log });
+      toast('Restored the original file names');
+      settingsView(view);
+    };
+  };
 }

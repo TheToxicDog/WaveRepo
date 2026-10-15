@@ -34,7 +34,7 @@ function emit(evt, data) { (listeners[evt] || []).forEach((f) => { try { f(data)
 
 export function connectEvents() {
   const es = new EventSource('/api/events');
-  ['scan', 'library', 'queue', 'download', 'queue_state', 'lyrics', 'liked', 'playlists', 'lyrics_backfill']
+  ['scan', 'library', 'queue', 'download', 'queue_state', 'lyrics', 'liked', 'playlists', 'lyrics_backfill', 'organize']
     .forEach((e) => es.addEventListener(e, (m) => emit(e, JSON.parse(m.data))));
   es.onerror = () => { /* EventSource auto-reconnects */ };
 }

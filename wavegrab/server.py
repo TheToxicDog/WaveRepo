@@ -2,7 +2,6 @@
 import asyncio
 import mimetypes
 import re
-import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -11,7 +10,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import catalog, db, downloader, events, lrc, lyrics, scanner
+from . import catalog, db, downloader, events, lrc, lyrics, organizer, scanner, tools
 from .config import settings
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -60,7 +59,7 @@ def with_cover(items, key="album_id"):
 def stats():
     return {
         "tracks": db.scalar("SELECT COUNT(*) FROM tracks"),
-        "albums": db.scalar("SELECT COUNT(*) FROM albums"),
+        "albums": db.scalar("SELECT COUNT(*) FROM albums WHERE track_count > 1"),
         "artists": db.scalar("SELECT COUNT(*) FROM artists"),
         "duration": db.scalar("SELECT COALESCE(SUM(duration),0) FROM tracks"),
         "liked": db.scalar("SELECT COUNT(*) FROM tracks WHERE liked_at>0"),
@@ -74,9 +73,10 @@ def stats():
 def albums(sort: str = "added", q: str = ""):
     order = {"added": "added_at DESC", "title": "title COLLATE NOCASE", "artist": "artist COLLATE NOCASE, year",
              "year": "year DESC"}.get(sort, "added_at DESC")
-    where, params = "", ()
+    # a "album" with a single song is a loose track, not an album: it lives in Songs
+    where, params = "WHERE track_count > 1", ()
     if q:
-        where, params = "WHERE title LIKE ? OR artist LIKE ?", (f"%{q}%", f"%{q}%")
+        where, params = "WHERE track_count > 1 AND (title LIKE ? OR artist LIKE ?)", (f"%{q}%", f"%{q}%")
     items = db.rows(f"SELECT * FROM albums {where} ORDER BY {order}", params)
     for a in items:
         a["cover"] = cover_url(a["id"])
@@ -124,7 +124,10 @@ def artist(artist_id: str):
         raise HTTPException(404, "Artist not found")
     a["cover"] = a["image_url"] or (cover_url(a["cover_album"]) if a["cover_album"] else "")
     a["albums"] = [dict(x, cover=cover_url(x["id"])) for x in
-                   db.rows("SELECT * FROM albums WHERE artist_id=? ORDER BY year DESC", (artist_id,))]
+                   db.rows("SELECT * FROM albums WHERE artist_id=? AND track_count > 1 ORDER BY year DESC", (artist_id,))]
+    a["singles"] = with_cover(db.rows(
+        f"SELECT {TRACK_COLS} FROM tracks t JOIN albums al ON al.id=t.album_id "
+        "WHERE t.artist_id=? AND al.track_count = 1 ORDER BY t.year DESC, t.title", (artist_id,)))
     a["top_tracks"] = with_cover(db.rows(
         f"SELECT {TRACK_COLS} FROM tracks t WHERE artist_id=? OR artist LIKE ? "
         "ORDER BY play_count DESC, liked_at DESC, added_at DESC LIMIT 10", (artist_id, f"%{a['name']}%")))
@@ -207,7 +210,7 @@ def history(limit: int = 50):
 @app.get("/api/recent-albums")
 def recent_albums(limit: int = 12):
     items = db.rows("SELECT a.*, MAX(h.played_at) AS played_at FROM play_history h JOIN tracks t ON t.id=h.track_id "
-                    "JOIN albums a ON a.id=t.album_id GROUP BY a.id ORDER BY played_at DESC LIMIT ?", (limit,))
+                    "JOIN albums a ON a.id=t.album_id WHERE a.track_count > 1 GROUP BY a.id ORDER BY played_at DESC LIMIT ?", (limit,))
     for a in items:
         a["cover"] = cover_url(a["id"])
     return items
@@ -247,6 +250,39 @@ def img(u: str):
     return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=604800"})
 
 
+def ranged_file(p: Path, media_type: str, request: Request):
+    """Serve a file with HTTP Range support so the browser can seek.
+    (spotDL pins an older Starlette whose FileResponse ignores Range.)"""
+    size = p.stat().st_size
+    rng = request.headers.get("range", "")
+    m = re.match(r"bytes=(\d*)-(\d*)", rng)
+    headers = {"Accept-Ranges": "bytes", "Cache-Control": "no-cache"}
+    if not m or (not m.group(1) and not m.group(2)):
+        return FileResponse(p, media_type=media_type, headers=headers)
+    if m.group(1):
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) else size - 1
+    else:  # suffix range: last N bytes
+        start, end = max(0, size - int(m.group(2))), size - 1
+    end = min(end, size - 1)
+    if start > end or start >= size:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+    length = end - start + 1
+
+    def gen():
+        with open(p, "rb") as f:
+            f.seek(start)
+            left = length
+            while left > 0:
+                chunk = f.read(min(256 * 1024, left))
+                if not chunk:
+                    break
+                left -= len(chunk)
+                yield chunk
+    headers.update({"Content-Range": f"bytes {start}-{end}/{size}", "Content-Length": str(length)})
+    return StreamingResponse(gen(), status_code=206, media_type=media_type, headers=headers)
+
+
 @app.get("/api/stream/{track_id}")
 def stream(track_id: int, request: Request):
     t = db.row("SELECT path, format FROM tracks WHERE id=?", (track_id,))
@@ -263,11 +299,12 @@ def stream(track_id: int, request: Request):
             mt = "audio/ogg"
         elif t["format"] == "flac":
             mt = "audio/flac"
-        return FileResponse(p, media_type=mt)
+        return ranged_file(p, mt, request)
     # WMA / AIFF / ALAC etc: transcode on the fly with ffmpeg
-    if not shutil.which("ffmpeg"):
+    ff = tools.ffmpeg_exe()
+    if not ff:
         raise HTTPException(415, "This format needs FFmpeg to play")
-    proc = subprocess.Popen(["ffmpeg", "-v", "quiet", "-i", str(p), "-f", "mp3", "-b:a", "320k", "-"],
+    proc = subprocess.Popen([ff, "-v", "quiet", "-i", str(p), "-f", "mp3", "-b:a", "320k", "-"],
                             stdout=subprocess.PIPE)
 
     def gen():
@@ -346,7 +383,7 @@ def search(q: str, limit: int = 40):
         if lyric_only(t) and t["id"] not in seen and len(lyric_hits) < 12:
             seen.add(t["id"])
             lyric_hits.append(dict(t, line=t["lyric_excerpt"], timestamp_ms=None))
-    albums = db.rows("SELECT * FROM albums WHERE title LIKE ? OR artist LIKE ? ORDER BY "
+    albums = db.rows("SELECT * FROM albums WHERE track_count > 1 AND (title LIKE ? OR artist LIKE ?) ORDER BY "
                      "CASE WHEN title LIKE ? THEN 0 ELSE 1 END, added_at DESC LIMIT 12", (like, like, f"{q}%"))
     for a in albums:
         a["cover"] = cover_url(a["id"])
@@ -520,12 +557,43 @@ def playlist_delete(pid: int):
     return {"ok": True}
 
 
+# ------------------------------------------------------------------ organizer
+
+@app.post("/api/organize/plan")
+def organize_plan(online: bool = True):
+    if not organizer.state["running"]:
+        organizer.plan_async(online)
+    return {"ok": True}
+
+
+@app.get("/api/organize")
+def organize_state():
+    return organizer.state
+
+
+@app.post("/api/organize/apply")
+def organize_apply(album_ids: list[str] = Body(None, embed=True)):
+    if organizer.state["running"]:
+        raise HTTPException(409, "Still checking your albums")
+    return organizer.apply(album_ids)
+
+
+@app.post("/api/organize/undo")
+def organize_undo(log: str = Body(..., embed=True)):
+    return organizer.undo(log)
+
+
+@app.post("/api/tools/ffmpeg")
+def tools_ffmpeg():
+    return {"ok": tools.install_ffmpeg()}
+
+
 # ------------------------------------------------------------------ settings & events
 
 @app.get("/api/settings")
 def get_settings():
     return {**settings.data, "data_home": str(settings.home),
-            "ffmpeg": bool(shutil.which("ffmpeg")), "spotdl": bool(shutil.which("spotdl")),
+            "ffmpeg": bool(tools.ffmpeg_exe()), "spotdl": tools.has_spotdl(),
             "ytdlp": downloader.yt_dlp is not None}
 
 

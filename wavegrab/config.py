@@ -62,6 +62,7 @@ def _default_settings() -> dict:
         "library_roots": roots,
         # Where new downloads land. Defaults to the external drive when present.
         "download_dir": external[0] if external else home_music,
+        "download_engine": "spotdl",     # spotdl (falls back to yt-dlp) | ytdlp
         "audio_format": "m4a",          # m4a | mp3 | opus | flac
         "mp3_quality": "320",
         "folder_template": "{album_artist}/{album}/{track:02d} {title}",
@@ -70,7 +71,7 @@ def _default_settings() -> dict:
         "cookies_browser": "",           # or read cookies from a browser: chrome | edge | firefox | brave
         "max_parallel_downloads": 1,
         "theme": "midnight",
-        "effects": "ripples",            # ripples | particles | glow | off
+        "effects": "ambient",            # ambient (music-reactive background) | off
         "effects_intensity": 0.7,
         "adaptive_color": True,          # tint UI with the playing album's colour
         "crossfade": 0,
