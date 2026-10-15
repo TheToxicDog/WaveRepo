@@ -316,6 +316,72 @@ def stream(track_id: int, request: Request):
     return StreamingResponse(gen(), media_type="audio/mpeg")
 
 
+# ------------------------------------------------------------------ music videos
+
+VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
+
+
+def video_dirs():
+    dirs = {Path(settings["download_dir"]) / "Music Videos"}
+    dirs |= {Path(r) / "Music Videos" for r in settings["library_roots"] if r}
+    return [d for d in dirs if d.is_dir()]
+
+
+def _video_path(vid: str) -> Path:
+    """Video ids are hashes of files found inside the Music Videos folders, so a
+    request can never reach a file outside them."""
+    import hashlib
+    for d in video_dirs():
+        for f in d.rglob("*"):
+            if f.suffix.lower() in VIDEO_EXTS and hashlib.sha1(str(f).encode()).hexdigest()[:16] == vid:
+                return f
+    raise HTTPException(404, "Video not found")
+
+
+@app.get("/api/videos")
+def videos():
+    import hashlib
+    out = []
+    for d in video_dirs():
+        for f in d.rglob("*"):
+            if f.suffix.lower() not in VIDEO_EXTS or f.name.startswith("."):
+                continue
+            artist, _, title = f.stem.partition(" - ")
+            st = f.stat()
+            vid = hashlib.sha1(str(f).encode()).hexdigest()[:16]
+            out.append({"id": vid, "title": title or f.stem, "artist": artist if title else "", "size": st.st_size,
+                        "added_at": int(st.st_mtime), "thumb": f"/api/videos/{vid}/thumb"})
+    out.sort(key=lambda v: v["added_at"], reverse=True)
+    return out
+
+
+@app.get("/api/videos/{vid}/stream")
+def video_stream(vid: str, request: Request):
+    p = _video_path(vid)
+    mt = {".webm": "video/webm", ".mkv": "video/x-matroska", ".mov": "video/quicktime"}.get(p.suffix.lower(), "video/mp4")
+    return ranged_file(p, mt, request)
+
+
+@app.get("/api/videos/{vid}/thumb")
+def video_thumb(vid: str):
+    thumb = settings.home / "cache" / "video-thumbs" / f"{vid}.jpg"
+    if not thumb.exists():
+        p = _video_path(vid)
+        ff = tools.ffmpeg_exe()
+        if not ff:
+            return Response(status_code=404)
+        thumb.parent.mkdir(parents=True, exist_ok=True)
+        # grab a frame a little way in (skips black intro frames)
+        for at in ("00:00:20", "00:00:03", "00:00:00"):
+            subprocess.run([ff, "-v", "quiet", "-y", "-ss", at, "-i", str(p), "-frames:v", "1", "-vf", "scale=640:-2",
+                            str(thumb)], timeout=60)
+            if thumb.exists() and thumb.stat().st_size > 0:
+                break
+        if not thumb.exists():
+            return Response(status_code=404)
+    return FileResponse(thumb, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.post("/api/scan")
 def scan(full: bool = False):
     scanner.scan_async(full)

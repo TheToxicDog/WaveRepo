@@ -475,3 +475,12 @@ input[type=range].range { accent-color: var(--accent); width: 180px; }
 .org-row { font-size: 12.5px; padding: 3px 0 3px 18px; font-family: ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
 .org-row .ic { display: inline-block; vertical-align: -2px; }
 code { background: var(--surface-3); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+
+/* music videos */
+.grid.videos { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.card-art.wide { aspect-ratio: 16 / 9; }
+#nowplaying.video-mode.open { display: block; background: #000; }
+.video-stage { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 24px; gap: 14px; }
+.video-stage video { flex: 1; min-height: 0; width: 100%; background: #000; border-radius: var(--radius-lg); outline: 0; }
+.video-info { display: flex; align-items: center; gap: 10px; color: #fff; }
+.video-info h2 { margin: 0; font-size: 22px; }

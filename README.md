@@ -13,6 +13,7 @@ A Spotify-style music player that runs **100% on your own PC**: your own music f
 - **Download queue, powered by spotDL.** A dedicated page with drag-to-reorder, move to top, hold/resume, cancel, retry, pause all, and live progress. spotDL finds each song using Spotify's data and YouTube Music; if it can't, WaveGrab's own YouTube search takes over. Paste Spotify, YouTube, YouTube Music or SoundCloud links like classic WaveGrab.
 - **Albums stay in order.** Album downloads are saved as `01 Title`, `02 Title`… so they sort in track order everywhere. **Settings → Organize library** does the same for the music you already have: it looks up the official track order online when your tags don't have it, and removes duplicate songs from albums (with a preview first, and undo).
 - **No duplicates, no 1-song "albums".** Downloads skip songs an album already has, missing tracks are saved into the existing album folder, and lone songs show up under Songs and the artist's "Singles & loose songs" instead of as albums.
+- **Music videos.** Save videos from Downloads ("Music video") and watch them on their own page with a full-window player.
 - **Synced lyrics.** Reads `.lrc` files next to your songs (or embedded lyrics) and highlights each line as it's sung. Downloads fetch lyrics from LRCLIB automatically.
 - **Sound.** 10-band EQ with presets, crossfade, and three shuffle styles: *Fewer repeats* (default), *Balanced artist spread*, and *Standard*.
 - **Looks.** 8 themes, a soft background glow that pulses with the music, and colours that match the playing album.

@@ -22,4 +22,4 @@ Work top to bottom; tick items as they land on `claude/sharp-shannon-f3eedk`.
 ## Phase 2 — Polish (after Phase 1)
 - [~] Merge user's existing WaveGrab code — BLOCKED: waiting for the user to push C:\scripts\musicvideodln (skip until it appears in the repo)
 - [x] Desktop window via pywebview + Windows launcher (run.py, start-wavegrab.bat)
-- [ ] Music video library tab (downloads already work via Downloads → "Music video"; add a page to browse/play them)
+- [x] Music video library page (sidebar → Music videos: thumbnails, full-screen player, next/previous)

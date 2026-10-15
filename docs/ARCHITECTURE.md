@@ -81,6 +81,10 @@ Spotify track, album and playlist links are read with `spotdl save` and become o
 
 The scan only produces a plan, which is shown for review. Apply performs it and writes `organize-undo-<time>.json` to the data folder, and the Undo button replays that log in reverse.
 
+## Music videos
+
+Video downloads go to `<download dir>/Music Videos/`, which the music scanner skips. The **Music videos** page (`/api/videos`) lists video files in every `Music Videos` folder under the music folders. Each video's id is a hash of its path, so the stream and thumbnail endpoints only serve files that listing found. Thumbnails are a single FFmpeg frame, cached in the data folder. YouTube video downloads are H.264 MP4s, which play in Edge WebView2 (the Windows window) and Chrome.
+
 ## Albums vs. loose songs
 
 An "album" with one song isn't shown as an album (Albums grid, Home, search, artist pages). Those songs appear under **Songs** and on the artist page under **Singles & loose songs**.

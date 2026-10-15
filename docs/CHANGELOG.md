@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 — music videos page (2026-10-15)
+- New **Music videos** page in the sidebar. It lists everything in the `Music Videos` folder of your music drive and download folder (where Downloads → "Music video" saves), with thumbnails (FFmpeg grabs a frame about 20 s in, cached) and the artist and title taken from the `Artist - Title` filename.
+- Clicking a video opens a full-window player with Previous/Next. It plays the next video automatically, and Esc closes it. Music that was playing pauses while the video plays and resumes afterwards.
+- Videos stream with seeking support. Requests can only reach files inside the Music Videos folders.
+
 ## 0.2.0 — spotDL, album order, no duplicates (2026-10-15)
 
 ### Downloads

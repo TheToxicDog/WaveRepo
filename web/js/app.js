@@ -16,6 +16,7 @@ import { albums, artists, liked, songs } from './views/library.js';
 import { playlist } from './views/playlist.js';
 import { search } from './views/search.js';
 import { settingsView } from './views/settings.js';
+import { videos } from './views/videos.js';
 
 const $ = (s) => document.querySelector(s);
 const view = $('#view');
@@ -28,7 +29,8 @@ function renderNav() {
     `<a href="#/${route}" class="${r === route || (route && r.startsWith(route + '/')) ? 'active' : ''}">${icon(ic, 22)}<span>${label}</span>${extra}</a>`;
   $('#nav-main').innerHTML = link('', 'home', 'Home') + link('search', 'search', 'Search') + link('discover', 'compass', 'Discover')
     + link('downloads', 'download', 'Downloads', dl ? `<span class="badge">${dl}</span>` : '');
-  $('#nav-lib').innerHTML = link('library/albums', 'disc', 'Albums') + link('library/artists', 'mic', 'Artists') + link('library/songs', 'music', 'Songs');
+  $('#nav-lib').innerHTML = link('library/albums', 'disc', 'Albums') + link('library/artists', 'mic', 'Artists') + link('library/songs', 'music', 'Songs')
+    + link('videos', 'playCircle', 'Music videos');
   $('#nav-settings').innerHTML = `${icon('settings', 22)}<span>Settings</span>`;
   $('#nav-settings').classList.toggle('active', r === 'settings');
   $('#new-playlist').innerHTML = icon('plus', 18);
@@ -93,6 +95,7 @@ async function route() {
       case 'online': parts[1] === 'artist' ? await onlineArtist(view, parts[2]) : await onlineAlbum(view, parts[2]); break;
       case 'playlist': await playlist(view, parts[1]); break;
       case 'settings': await settingsView(view); break;
+      case 'videos': await videos(view); break;
       default: await home(view);
     }
   } catch (e) {
