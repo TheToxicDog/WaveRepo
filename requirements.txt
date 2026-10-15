@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn>=0.29
+mutagen>=1.47
+httpx>=0.27
+yt-dlp[default]>=2025.1.1
+# optional:
+# pywebview>=5     -> opens WaveGrab in its own desktop window instead of a browser tab
+# spotdl>=4.2      -> enables pasting Spotify links in Downloads

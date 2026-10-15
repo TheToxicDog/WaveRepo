@@ -1,0 +1,126 @@
+/* Themes: every colour in the app comes from these variables.
+   --accent-rgb / --accent2-rgb are also fed to the background effects. */
+
+:root, [data-theme="midnight"] {
+  --bg: #08080b;
+  --bg-2: #101015;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.085);
+  --surface-3: rgba(255, 255, 255, 0.13);
+  --panel: rgba(16, 16, 21, 0.66);
+  --text: #f4f4f6;
+  --text-dim: #a4a4ad;
+  --text-faint: #6c6c76;
+  --border: rgba(255, 255, 255, 0.07);
+  --accent: #1ed760;
+  --accent-rgb: 30, 215, 96;
+  --accent2-rgb: 64, 120, 255;
+  --on-accent: #04130a;
+  --danger: #ff5c6c;
+  --warn: #ffb547;
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+[data-theme="aurora"] {
+  --bg: #090816;
+  --bg-2: #120f26;
+  --panel: rgba(20, 16, 42, 0.64);
+  --text: #f2f0ff;
+  --text-dim: #aca6d0;
+  --text-faint: #6f6a92;
+  --accent: #a78bfa;
+  --accent-rgb: 167, 139, 250;
+  --accent2-rgb: 45, 212, 191;
+  --on-accent: #160d33;
+}
+
+[data-theme="sunset"] {
+  --bg: #120a10;
+  --bg-2: #1c1018;
+  --panel: rgba(32, 16, 26, 0.64);
+  --text: #fff2ee;
+  --text-dim: #cfa9a6;
+  --text-faint: #8a6966;
+  --accent: #ff7a59;
+  --accent-rgb: 255, 122, 89;
+  --accent2-rgb: 255, 77, 141;
+  --on-accent: #2a0d06;
+}
+
+[data-theme="ocean"] {
+  --bg: #050c14;
+  --bg-2: #0a1522;
+  --panel: rgba(10, 24, 40, 0.64);
+  --text: #eef7ff;
+  --text-dim: #9db4c8;
+  --text-faint: #5f7487;
+  --accent: #38bdf8;
+  --accent-rgb: 56, 189, 248;
+  --accent2-rgb: 99, 102, 241;
+  --on-accent: #03141f;
+}
+
+[data-theme="forest"] {
+  --bg: #070d09;
+  --bg-2: #0d1710;
+  --panel: rgba(14, 26, 18, 0.64);
+  --text: #f0f7f1;
+  --text-dim: #a2b8a6;
+  --text-faint: #64786a;
+  --accent: #a3e635;
+  --accent-rgb: 163, 230, 53;
+  --accent2-rgb: 16, 185, 129;
+  --on-accent: #142004;
+}
+
+[data-theme="mono"] {
+  --bg: #000;
+  --bg-2: #0c0c0c;
+  --panel: rgba(14, 14, 14, 0.7);
+  --text: #fafafa;
+  --text-dim: #a0a0a0;
+  --text-faint: #606060;
+  --accent: #fafafa;
+  --accent-rgb: 250, 250, 250;
+  --accent2-rgb: 140, 140, 140;
+  --on-accent: #000;
+}
+
+[data-theme="paper"] {
+  --bg: #f4f3ef;
+  --bg-2: #ebe9e3;
+  --surface: rgba(0, 0, 0, 0.035);
+  --surface-2: rgba(0, 0, 0, 0.065);
+  --surface-3: rgba(0, 0, 0, 0.1);
+  --panel: rgba(250, 249, 246, 0.72);
+  --text: #18181b;
+  --text-dim: #5d5d66;
+  --text-faint: #9a9aa3;
+  --border: rgba(0, 0, 0, 0.08);
+  --accent: #2563eb;
+  --accent-rgb: 37, 99, 235;
+  --accent2-rgb: 236, 72, 153;
+  --on-accent: #fff;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  color-scheme: light;
+}
+
+[data-theme="blossom"] {
+  --bg: #fff5f7;
+  --bg-2: #fdeaef;
+  --surface: rgba(80, 0, 30, 0.04);
+  --surface-2: rgba(80, 0, 30, 0.07);
+  --surface-3: rgba(80, 0, 30, 0.11);
+  --panel: rgba(255, 248, 250, 0.72);
+  --text: #2b1220;
+  --text-dim: #7a5566;
+  --text-faint: #b293a1;
+  --border: rgba(80, 0, 30, 0.08);
+  --accent: #e11d74;
+  --accent-rgb: 225, 29, 116;
+  --accent2-rgb: 251, 146, 60;
+  --on-accent: #fff;
+  --shadow: 0 10px 30px rgba(80, 0, 30, 0.12);
+  color-scheme: light;
+}
